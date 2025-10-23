@@ -1,4 +1,4 @@
-module github.com/zakahan/docx2md
+module github.com/eino-contrib/docx2md
 
 go 1.23.3
 

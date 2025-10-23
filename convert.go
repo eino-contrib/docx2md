@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/zakahan/docx2md/docx_parser"
+	"github.com/eino-contrib/docx2md/docx_parser"
 )
 
 func DocxConvert(docPath string) (string, error) { // Returns markdown string and error
