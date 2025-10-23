@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-// 修改后的读取和解析函数，将段落和表格混合存储
+// ReadDocx reads and parses a .docx file, returning a Document object.
+// It now handles paragraphs, tables, headers, and footers.
 func ReadDocx(filePath string) (*Document, error) {
 	r, err := zip.OpenReader(filePath)
 	if err != nil {

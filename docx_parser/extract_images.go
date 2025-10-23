@@ -9,10 +9,9 @@ import (
 	"strings"
 )
 
-// 提取并保存图片到指定文件夹
-// 提取并保存图片到指定文件夹
+// extractImageFromDocx extracts and saves an image to a specified directory.
 func extractImageFromDocx(r *zip.ReadCloser, rid string, relationships Relationships, outputDir string) (string, error) {
-	// 图片资源ID通常以 "rId" 开头
+	// Image resource IDs usually start with "rId"
 	var mediaFileName string
 	for _, rel := range relationships.Relationship {
 		if rid == rel.Id {
@@ -22,7 +21,7 @@ func extractImageFromDocx(r *zip.ReadCloser, rid string, relationships Relations
 	}
 
 	for _, f := range r.File {
-		// 查找与资源ID对应的图片文件
+		// Find the image file corresponding to the resource ID
 		if strings.Contains(f.Name, mediaFileName) && strings.HasPrefix(f.Name, "word/media/") {
 			rc, err := f.Open()
 			if err != nil {
@@ -35,10 +34,10 @@ func extractImageFromDocx(r *zip.ReadCloser, rid string, relationships Relations
 				}
 			}(rc)
 
-			// 构造图片的输出路径
+			// Construct the output path for the image
 			imagePath := filepath.Join(outputDir, filepath.Base(f.Name))
 
-			// 将图片数据保存到文件
+			// Save the image data to a file
 			imageData, err := io.ReadAll(rc)
 			if err != nil {
 				return "", err
@@ -48,7 +47,7 @@ func extractImageFromDocx(r *zip.ReadCloser, rid string, relationships Relations
 				return "", err
 			}
 
-			// 返回图片的路径
+			// Return the path of the image
 			return imagePath, nil
 		}
 	}

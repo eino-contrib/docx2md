@@ -8,7 +8,7 @@ import (
 	"github.com/zakahan/docx2md/docx_parser"
 )
 
-func DocxConvert(docPath string) (string, error) {
+func DocxConvert(docPath string) (string, error) { // Returns markdown string and error
 	// --------------
 	doc, err := docx_parser.ReadDocx(docPath)
 	if err != nil {
@@ -111,7 +111,7 @@ func word2Heading(value string, fontSize int, numPr *bool) string {
 }
 
 func getTrimedStr(s string) string {
-	// 使用 TrimFunc 去掉字符串两端的所有空白字符
+	// Use TrimFunc to remove all leading/trailing whitespace from the string
 	trimmed := strings.TrimFunc(s, func(r rune) bool {
 		return unicode.IsSpace(r)
 	})

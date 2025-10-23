@@ -4,7 +4,7 @@ import "encoding/xml"
 
 type ContentItem struct {
 	Type  string      // "paragraph", "table", "image"
-	Value interface{} // Paragraph, Table 或 图片路径 (string)
+	Value interface{} // Paragraph, Table, or image path (string)
 }
 
 type Document struct {
@@ -17,25 +17,25 @@ type Body struct {
 	Contents []ContentItem
 }
 
-type Paragraph struct { // 段落类型 w:p
-	Runs    []Run  `xml:"r"`          // 段落包含多个 run
-	NumPr   *bool  `xml:"pPr>numPr"`  // 检查是否存在编号信息
-	StyleId PStyle `xml:"pPr>pStyle"` // 段落样式
+type Paragraph struct { // Paragraph type w:p
+	Runs    []Run  `xml:"r"`          // A paragraph contains multiple runs
+	NumPr   *bool  `xml:"pPr>numPr"`  // Check for numbering information
+	StyleId PStyle `xml:"pPr>pStyle"` // Paragraph style
 }
 
-type PStyle struct { // 段落样式
+type PStyle struct { // Paragraph style
 	Value string `xml:"val,attr"`
 }
 
-type Run struct { // 文本运行，可能包含文本或图片
+type Run struct { // Text run, may contain text or images
 	FontSize FontSize `xml:"rPr>sz"`
-	//FontBold    *bool    `xml:"rPr>b"`        // 会出现连续**问题，故去掉
+	//FontBold    *bool    `xml:"rPr>b"`        // Removed due to continuous bold issues
 	//FontIncline *bool    `xml:"rPr>i"`
 	Text    []Text   `xml:"t"`
-	Drawing *Drawing `xml:"drawing,omitempty"` // 可能包含图片
+	Drawing *Drawing `xml:"drawing,omitempty"` // May contain an image
 }
 
-type Drawing struct { // 图片嵌套在 <w:drawing> 中
+type Drawing struct { // Image nested in <w:drawing>
 	Blip Blip `xml:"inline>graphic>graphicData>pic>blipFill>blip"`
 }
 
@@ -66,7 +66,7 @@ type FontSize struct {
 }
 
 // Relationships -------------------------------------
-// 定义结构体以匹配XML格式
+// Define struct to match XML format
 type Relationships struct {
 	XMLName      xml.Name       `xml:"http://schemas.openxmlformats.org/package/2006/relationships Relationships"`
 	Relationship []Relationship `xml:"http://schemas.openxmlformats.org/package/2006/relationships Relationship"`
@@ -80,7 +80,7 @@ type Relationship struct {
 
 /* -------------------------------------------------------------- */
 
-// Styles 样式表
+// Styles stylesheet
 type Styles struct {
 	XMLName   xml.Name
 	StyleList []Style `xml:"style"`
