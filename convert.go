@@ -8,43 +8,84 @@ import (
 	"github.com/eino-contrib/docx2md/docx_parser"
 )
 
-func DocxConvert(docPath string) (string, error) { // Returns markdown string and error
+// Config controls the conversion process.
+type Config struct {
+	IncludeHeaders bool // whether to include headers in the parsed content
+	IncludeFooters bool // whether to include footers in the parsed content
+	IncludeTables  bool // whether to include table content
+}
+
+func DocxConvert(docPath string, config *Config) (map[string]string, error) { // Returns markdown string and error
 	// --------------
 	doc, err := docx_parser.ReadDocx(docPath)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	var buffer bytes.Buffer
+	sections := make(map[string]string)
+	var headerBuilder, bodyBuilder, tableBuilder, footerBuilder bytes.Buffer
 
-	// Process Headers
-	for _, header := range doc.Headers {
-		for _, content := range header.Contents {
-			processContentItem(content, &buffer)
+	if config == nil {
+		config = &Config{
+			IncludeHeaders: true,
+			IncludeFooters: true,
+			IncludeTables:  true,
 		}
 	}
 
-	// Process Body
+	// Process Headers
+	if config.IncludeHeaders {
+		for _, header := range doc.Headers {
+			for _, content := range header.Contents {
+				processContentItem(content, &headerBuilder, &tableBuilder, config)
+			}
+		}
+	}
+
+	// Process Body and Tables
 	for _, content := range doc.Body.Contents {
-		processContentItem(content, &buffer)
+		processContentItem(content, &bodyBuilder, &tableBuilder, config)
 	}
 
 	// Process Footers
-	for _, footer := range doc.Footers {
-		for _, content := range footer.Contents {
-			processContentItem(content, &buffer)
+	if config.IncludeFooters {
+		for _, footer := range doc.Footers {
+			for _, content := range footer.Contents {
+				processContentItem(content, &footerBuilder, &tableBuilder, config)
+			}
 		}
 	}
 
-	return buffer.String(), nil
+	if config.IncludeHeaders {
+		sections["header"] = headerBuilder.String()
+	}
+	sections["body"] = bodyBuilder.String()
+	if config.IncludeTables {
+		sections["table"] = tableBuilder.String()
+	}
+	if config.IncludeFooters {
+		sections["footer"] = footerBuilder.String()
+	}
+
+	return sections, nil
 }
 
-func processContentItem(content docx_parser.ContentItem, buffer *bytes.Buffer) {
+func processContentItem(content docx_parser.ContentItem, buffer, tableBuilder *bytes.Buffer, config *Config) {
 	if content.Type == "paragraph" {
 		var bufferPar bytes.Buffer
-		var fontSizePar int = 48
 		para := content.Value.(docx_parser.Paragraph)
 		numPr := para.NumPr
+
+		var fontSizePar int
+		// Handle paragraphs with no text runs.
+		if len(para.Runs) == 0 {
+			fontSizePar = 0 // Default font size for empty paragraphs.
+		} else {
+			// Initialize with the font size of the first run.
+			fontSizePar = para.Runs[0].FontSize.Value
+		}
+
+		// Find the minimum font size and build the paragraph string.
 		for _, run := range para.Runs {
 			if run.FontSize.Value < fontSizePar {
 				fontSizePar = run.FontSize.Value
@@ -56,10 +97,11 @@ func processContentItem(content docx_parser.ContentItem, buffer *bytes.Buffer) {
 		paragraphStr := bufferPar.String()
 		paragraphStr = word2Heading(paragraphStr, fontSizePar, numPr)
 		buffer.WriteString(paragraphStr)
-	} else if content.Type == "table" {
+	} else if config.IncludeTables && content.Type == "table" {
 		table := content.Value.(docx_parser.Table)
 		tableStr := docx_parser.Table2markdown(table)
-		buffer.WriteString(tableStr)
+		tableBuilder.WriteString(tableStr)
+		tableBuilder.WriteString("\n")
 	} else if content.Type == "image" {
 		// Image processing is disabled
 	}

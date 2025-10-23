@@ -44,17 +44,12 @@ func ReadDocx(filePath string) (*Document, error) {
 	// Process content files
 	for _, f := range r.File {
 		var bodyPart *Body
-		isHeader := false
-		isFooter := false
-
 		if f.Name == "word/document.xml" {
 			bodyPart = &doc.Body
 		} else if strings.HasPrefix(f.Name, "word/header") && strings.HasSuffix(f.Name, ".xml") {
-			isHeader = true
 			doc.Headers = append(doc.Headers, Body{})
 			bodyPart = &doc.Headers[len(doc.Headers)-1]
 		} else if strings.HasPrefix(f.Name, "word/footer") && strings.HasSuffix(f.Name, ".xml") {
-			isFooter = true
 			doc.Footers = append(doc.Footers, Body{})
 			bodyPart = &doc.Footers[len(doc.Footers)-1]
 		} else {
@@ -73,10 +68,6 @@ func ReadDocx(filePath string) (*Document, error) {
 		}
 		rc.Close()
 		*bodyPart = body
-
-		if isHeader || isFooter {
-			// Optionally handle header/footer specific logic
-		}
 	}
 
 	stylizedBody(&doc.Body, stylesList)

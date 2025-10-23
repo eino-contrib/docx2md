@@ -14,7 +14,6 @@ func stylizedBody(body *Body, styles *Styles) {
 			styleFZMap[style.StyleId] = style.FontSize.Value
 		}
 	}
-	//fmt.Println(styleFZMap)
 	// Iterate through the body, looking for paragraphs
 	for i, content := range body.Contents {
 		if content.Type == "paragraph" {
@@ -30,6 +29,4 @@ func stylizedBody(body *Body, styles *Styles) {
 			body.Contents[i].Value = paragraph
 		}
 	}
-
-	//fmt.Println(styleFZMap)
 }
