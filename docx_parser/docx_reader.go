@@ -3,145 +3,120 @@ package docx_parser
 import (
 	"archive/zip"
 	"encoding/xml"
-	"fmt"
 	"io"
-	"os"
-	"path/filepath"
+	"strings"
 )
 
 // 修改后的读取和解析函数，将段落和表格混合存储
-func ReadDocx(filePath string, outputFileDir string) (*Document, error) {
+func ReadDocx(filePath string) (*Document, error) {
 	r, err := zip.OpenReader(filePath)
 	if err != nil {
 		return nil, err
 	}
-	defer func(r *zip.ReadCloser) {
-		err := r.Close()
-		if err != nil {
-			// empty
-		}
-	}(r)
+	defer r.Close()
 
-	// 查找 document.xml.rels文件，也就是多媒体依赖
-	var documentFileRels *zip.File
+	var doc Document
+	var relationships Relationships
+	var stylesList *Styles
+
+	// Pre-process relationships and styles
 	for _, f := range r.File {
 		if f.Name == "word/_rels/document.xml.rels" {
-			documentFileRels = f
-			break
+			rc, err := f.Open()
+			if err != nil {
+				return nil, err
+			}
+			if err := xml.NewDecoder(rc).Decode(&relationships); err != nil {
+				rc.Close()
+				return nil, err
+			}
+			rc.Close()
+		}
+		if f.Name == "word/styles.xml" {
+			stylesList, err = ReadStyle(r, filePath)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
-	if documentFileRels == nil {
-		return nil, fmt.Errorf("document.xml not found in %s", filePath)
-	}
-	// 读取 document.xml 的内容
-	rcDFR, err := documentFileRels.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer func(rc io.ReadCloser) {
-		err := rc.Close()
-		if err != nil {
-			// empty
-		}
-	}(rcDFR)
-	// 解析相关依赖 得到一个rid和images的map
-	var relationships Relationships
-	err = xml.NewDecoder(rcDFR).Decode(&relationships)
-	if err != nil {
-		return nil, err
-	}
 
-	/* ----------------------------------------------------------------------------- */
-	// 解析style文件
-	stylesList, err := ReadStyle(r, filePath)
-	if err != nil {
-		return nil, err
-	}
-
-	/* ----------------------------------------------------------------------------- */
-
-	// 查找 document.xml
-	var documentFile *zip.File
+	// Process content files
 	for _, f := range r.File {
+		var bodyPart *Body
+		isHeader := false
+		isFooter := false
+
 		if f.Name == "word/document.xml" {
-			documentFile = f
-			break
+			bodyPart = &doc.Body
+		} else if strings.HasPrefix(f.Name, "word/header") && strings.HasSuffix(f.Name, ".xml") {
+			isHeader = true
+			doc.Headers = append(doc.Headers, Body{})
+			bodyPart = &doc.Headers[len(doc.Headers)-1]
+		} else if strings.HasPrefix(f.Name, "word/footer") && strings.HasSuffix(f.Name, ".xml") {
+			isFooter = true
+			doc.Footers = append(doc.Footers, Body{})
+			bodyPart = &doc.Footers[len(doc.Footers)-1]
+		} else {
+			continue
 		}
-	}
 
-	if documentFile == nil {
-		return nil, fmt.Errorf("document.xml not found in %s", filePath)
-	}
-
-	// 创建保存图片的文件夹
-	outputDir := filepath.Join(outputFileDir, "images")
-	err = os.MkdirAll(outputDir, os.ModePerm)
-	if err != nil {
-		return nil, err
-	}
-
-	// 读取 document.xml 的内容
-	rcDF, err := documentFile.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer func(rc io.ReadCloser) {
-		err := rc.Close()
+		rc, err := f.Open()
 		if err != nil {
-			// empty
+			return nil, err
 		}
-	}(rcDF)
 
-	decoder := xml.NewDecoder(rcDF)
+		body, err := parseContent(xml.NewDecoder(rc), r, relationships)
+		if err != nil {
+			rc.Close()
+			return nil, err
+		}
+		rc.Close()
+		*bodyPart = body
+
+		if isHeader || isFooter {
+			// Optionally handle header/footer specific logic
+		}
+	}
+
+	stylizedBody(&doc.Body, stylesList)
+	for i := range doc.Headers {
+		stylizedBody(&doc.Headers[i], stylesList)
+	}
+	for i := range doc.Footers {
+		stylizedBody(&doc.Footers[i], stylesList)
+	}
+
+	return &doc, nil
+}
+
+func parseContent(decoder *xml.Decoder, r *zip.ReadCloser, relationships Relationships) (Body, error) {
 	var body Body
-	var contentItem ContentItem
-
-	// 解析 XML 并处理段落、表格和图片
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return body, err
 		}
 
 		switch t := token.(type) {
 		case xml.StartElement:
-			if t.Name.Local == "p" { // 段落
+			if t.Name.Local == "p" { // Paragraph
 				var para Paragraph
-				err := decoder.DecodeElement(&para, &t)
-				if err != nil {
-					return nil, err
+				if err := decoder.DecodeElement(&para, &t); err != nil {
+					return body, err
 				}
-
-				// 处理段落中的图片
-				for _, run := range para.Runs {
-					if run.Drawing != nil {
-						imagePath, err := extractImageFromDocx(r, run.Drawing.Blip.Embed, relationships, outputDir)
-						if err != nil {
-							return nil, err
-						}
-						contentItem = ContentItem{Type: "image", Value: imagePath}
-						body.Contents = append(body.Contents, contentItem)
-					}
-				}
-
-				contentItem = ContentItem{Type: "paragraph", Value: para}
-				body.Contents = append(body.Contents, contentItem)
-			} else if t.Name.Local == "tbl" { // 表格
+				// Image handling is disabled as file output is not desired.
+				body.Contents = append(body.Contents, ContentItem{Type: "paragraph", Value: para})
+			} else if t.Name.Local == "tbl" { // Table
 				var tbl Table
-				err := decoder.DecodeElement(&tbl, &t)
-				if err != nil {
-					return nil, err
+				if err := decoder.DecodeElement(&tbl, &t); err != nil {
+					return body, err
 				}
-				contentItem = ContentItem{Type: "table", Value: tbl}
-				body.Contents = append(body.Contents, contentItem)
+				body.Contents = append(body.Contents, ContentItem{Type: "table", Value: tbl})
 			}
 		}
 	}
-
-	// 结合styles和body，修改font size
-	stylizedBody(&body, stylesList)
-	return &Document{Body: body}, nil
+	return body, nil
 }

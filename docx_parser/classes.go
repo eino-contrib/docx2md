@@ -8,7 +8,9 @@ type ContentItem struct {
 }
 
 type Document struct {
-	Body Body `xml:"body"`
+	Body    Body   `xml:"body"`
+	Headers []Body // for header*.xml
+	Footers []Body // for footer*.xml
 }
 
 type Body struct {
