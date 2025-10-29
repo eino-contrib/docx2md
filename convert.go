@@ -57,14 +57,14 @@ func DocxConvert(docPath string, config *Config) (map[string]string, error) { //
 	}
 
 	if config.IncludeHeaders {
-		sections["header"] = headerBuilder.String()
+		sections["headers"] = headerBuilder.String()
 	}
-	sections["body"] = bodyBuilder.String()
+	sections["main"] = bodyBuilder.String()
 	if config.IncludeTables {
-		sections["table"] = tableBuilder.String()
+		sections["tables"] = tableBuilder.String()
 	}
 	if config.IncludeFooters {
-		sections["footer"] = footerBuilder.String()
+		sections["footers"] = footerBuilder.String()
 	}
 
 	return sections, nil

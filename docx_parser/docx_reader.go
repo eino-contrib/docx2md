@@ -3,6 +3,7 @@ package docx_parser
 import (
 	"archive/zip"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"strings"
 )
@@ -19,57 +20,96 @@ func ReadDocx(filePath string) (*Document, error) {
 	var doc Document
 	var relationships Relationships
 	var stylesList *Styles
+	var relsFile, stylesFile, docFile *zip.File
+	var headerFiles, footerFiles []*zip.File
 
-	// Pre-process relationships and styles
 	for _, f := range r.File {
-		if f.Name == "word/_rels/document.xml.rels" {
-			rc, err := f.Open()
-			if err != nil {
-				return nil, err
+		switch {
+		case f.Name == "word/_rels/document.xml.rels":
+			if relsFile != nil {
+				return nil, fmt.Errorf("duplicate file found in docx archive: %s", f.Name)
 			}
-			if err := xml.NewDecoder(rc).Decode(&relationships); err != nil {
-				rc.Close()
-				return nil, err
+			relsFile = f
+		case f.Name == "word/styles.xml":
+			if stylesFile != nil {
+				return nil, fmt.Errorf("duplicate file found in docx archive: %s", f.Name)
 			}
-			rc.Close()
-		}
-		if f.Name == "word/styles.xml" {
-			stylesList, err = ReadStyle(r, filePath)
-			if err != nil {
-				return nil, err
+			stylesFile = f
+		case f.Name == "word/document.xml":
+			if docFile != nil {
+				return nil, fmt.Errorf("duplicate file found in docx archive: %s", f.Name)
 			}
+			docFile = f
+		case strings.HasPrefix(f.Name, "word/header") && strings.HasSuffix(f.Name, ".xml"):
+			headerFiles = append(headerFiles, f)
+		case strings.HasPrefix(f.Name, "word/footer") && strings.HasSuffix(f.Name, ".xml"):
+			footerFiles = append(footerFiles, f)
 		}
 	}
 
-	// Process content files
-	for _, f := range r.File {
-		var bodyPart *Body
-		if f.Name == "word/document.xml" {
-			bodyPart = &doc.Body
-		} else if strings.HasPrefix(f.Name, "word/header") && strings.HasSuffix(f.Name, ".xml") {
-			doc.Headers = append(doc.Headers, Body{})
-			bodyPart = &doc.Headers[len(doc.Headers)-1]
-		} else if strings.HasPrefix(f.Name, "word/footer") && strings.HasSuffix(f.Name, ".xml") {
-			doc.Footers = append(doc.Footers, Body{})
-			bodyPart = &doc.Footers[len(doc.Footers)-1]
-		} else {
-			continue
-		}
+	if docFile == nil {
+		return nil, fmt.Errorf("word/document.xml not found in docx")
+	}
+	if relsFile == nil {
+		return nil, fmt.Errorf("word/_rels/document.xml.rels not found in docx")
+	}
 
+	// --- Parse files in dependency order ---
+
+	// Parse relationships
+	rcRels, err := relsFile.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer rcRels.Close()
+	if err := xml.NewDecoder(rcRels).Decode(&relationships); err != nil {
+		return nil, err
+	}
+
+	// Parse styles (if it exists)
+	if stylesFile != nil {
+		// ReadStyle already handles its own file opening/closing and defer.
+		stylesList, err = ReadStyle(r, filePath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Helper function to parse a content file.
+	parseFile := func(f *zip.File) (Body, error) {
 		rc, err := f.Open()
 		if err != nil {
-			return nil, err
+			return Body{}, err
 		}
-
-		body, err := parseContent(xml.NewDecoder(rc), r, relationships)
-		if err != nil {
-			rc.Close()
-			return nil, err
-		}
-		rc.Close()
-		*bodyPart = body
+		defer rc.Close()
+		return parseContent(xml.NewDecoder(rc), r, relationships)
 	}
 
+	// Parse main document body
+	doc.Body, err = parseFile(docFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse document.xml: %w", err)
+	}
+
+	// Parse headers
+	for _, f := range headerFiles {
+		body, err := parseFile(f)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse %s: %w", f.Name, err)
+		}
+		doc.Headers = append(doc.Headers, body)
+	}
+
+	// Parse footers
+	for _, f := range footerFiles {
+		body, err := parseFile(f)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse %s: %w", f.Name, err)
+		}
+		doc.Footers = append(doc.Footers, body)
+	}
+
+	// --- Apply styles to all parsed content ---
 	stylizedBody(&doc.Body, stylesList)
 	for i := range doc.Headers {
 		stylizedBody(&doc.Headers[i], stylesList)
