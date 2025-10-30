@@ -14,7 +14,7 @@ import (
 )
 
 func ReadStyle(r *zip.ReadCloser, filePath string) (*Styles, error) {
-	// 查找 document.xml.rels文件，也就是多媒体依赖
+	// Find the styles.xml file
 	var styleFileRels *zip.File
 	for _, f := range r.File {
 		if f.Name == "word/styles.xml" {
@@ -26,7 +26,7 @@ func ReadStyle(r *zip.ReadCloser, filePath string) (*Styles, error) {
 	if styleFileRels == nil {
 		return nil, fmt.Errorf("styles.xml not found in %s", filePath)
 	}
-	// 读取style.xml的内容
+	// Read the content of style.xml
 	rcDFR, err := styleFileRels.Open()
 	if err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ func ReadStyle(r *zip.ReadCloser, filePath string) (*Styles, error) {
 			// empty
 		}
 	}(rcDFR)
-	// 解析
+	// Parse the XML
 	var stylesList Styles
 	err = xml.NewDecoder(rcDFR).Decode(&stylesList)
 	if err != nil {

@@ -2,65 +2,110 @@ package docx2md
 
 import (
 	"bytes"
-	"fmt"
-	"github.com/zakahan/docx2md/docx_parser"
-	"path/filepath"
 	"strings"
 	"unicode"
+
+	"github.com/eino-contrib/docx2md/docx_parser"
 )
 
-func DocxConvert(docPath string, outputDir string) (string, string, error) { // 分别是 文件名， 内容字符串， error
-	mdPath, mdDirPath, err := docx_parser.CreateMdDir(docPath, outputDir, ".docx")
-	if err != nil {
-		fmt.Println("Error:", err)
-		return "", "", err
-	}
+// Config controls the conversion process.
+type Config struct {
+	IncludeHeaders bool // whether to include headers in the parsed content
+	IncludeFooters bool // whether to include footers in the parsed content
+	IncludeTables  bool // whether to include table content
+}
+
+func DocxConvert(docPath string, config *Config) (map[string]string, error) { // Returns markdown string and error
 	// --------------
-	doc, err := docx_parser.ReadDocx(docPath, mdDirPath)
+	doc, err := docx_parser.ReadDocx(docPath)
 	if err != nil {
-		fmt.Println("Error:", err)
-		return "", "", err
+		return nil, err
 	}
 
-	var buffer bytes.Buffer
+	sections := make(map[string]string)
+	var headerBuilder, bodyBuilder, tableBuilder, footerBuilder bytes.Buffer
 
-	for _, content := range doc.Body.Contents {
-		if content.Type == "paragraph" {
-			var bufferPar bytes.Buffer // 对一个段落
-			var fontSizePar int = 48   // 找个比较大的值，应该不会比这个更离谱，反正都是h1
-			para := content.Value.(docx_parser.Paragraph)
-			numPr := para.NumPr
-			for _, run := range para.Runs {
-				// 统计最小字号是多少，按最小的来
-				if run.FontSize.Value < fontSizePar {
-					fontSizePar = run.FontSize.Value
-				}
-				for _, text := range run.Text {
-					bufferPar.WriteString(text.Value)
-				}
-			}
-			// runs结束了在一个字符串内
-			paragraphStr := bufferPar.String()
-			paragraphStr = word2Heading(paragraphStr, fontSizePar, numPr)
-			buffer.WriteString(paragraphStr)
-		} else if content.Type == "table" {
-			table := content.Value.(docx_parser.Table)
-			tableStr := docx_parser.Table2markdown(table)
-			buffer.WriteString(tableStr)
-
-		} else if content.Type == "image" {
-			imagePath := content.Value.(string)
-			imageName := filepath.Base(imagePath)
-			// 图片选择添加相对路径
-			buffer.WriteString("![" + imageName + "](" + filepath.Join("images", imageName) + ")")
+	if config == nil {
+		config = &Config{
+			IncludeHeaders: true,
+			IncludeFooters: true,
+			IncludeTables:  true,
 		}
-		buffer.WriteString("\n")
-
 	}
-	markdownStr := buffer.String()
-	err = docx_parser.SaveFile(mdPath, markdownStr)
-	return mdPath, markdownStr, err
 
+	// Process Headers
+	if config.IncludeHeaders {
+		for _, header := range doc.Headers {
+			for _, content := range header.Contents {
+				processContentItem(content, &headerBuilder, &tableBuilder, config)
+			}
+		}
+	}
+
+	// Process Body and Tables
+	for _, content := range doc.Body.Contents {
+		processContentItem(content, &bodyBuilder, &tableBuilder, config)
+	}
+
+	// Process Footers
+	if config.IncludeFooters {
+		for _, footer := range doc.Footers {
+			for _, content := range footer.Contents {
+				processContentItem(content, &footerBuilder, &tableBuilder, config)
+			}
+		}
+	}
+
+	if config.IncludeHeaders {
+		sections["headers"] = headerBuilder.String()
+	}
+	sections["main"] = bodyBuilder.String()
+	if config.IncludeTables {
+		sections["tables"] = tableBuilder.String()
+	}
+	if config.IncludeFooters {
+		sections["footers"] = footerBuilder.String()
+	}
+
+	return sections, nil
+}
+
+func processContentItem(content docx_parser.ContentItem, buffer, tableBuilder *bytes.Buffer, config *Config) {
+	if content.Type == "paragraph" {
+		var bufferPar bytes.Buffer
+		para := content.Value.(docx_parser.Paragraph)
+		numPr := para.NumPr
+
+		var fontSizePar int
+		// Handle paragraphs with no text runs.
+		if len(para.Runs) == 0 {
+			fontSizePar = 0 // Default font size for empty paragraphs.
+		} else {
+			// Initialize with the font size of the first run.
+			fontSizePar = para.Runs[0].FontSize.Value
+		}
+
+		// Find the minimum font size and build the paragraph string.
+		for _, run := range para.Runs {
+			if run.FontSize.Value < fontSizePar {
+				fontSizePar = run.FontSize.Value
+			}
+			for _, text := range run.Text {
+				bufferPar.WriteString(text.Value)
+			}
+		}
+		paragraphStr := bufferPar.String()
+		paragraphStr = word2Heading(paragraphStr, fontSizePar, numPr)
+		buffer.WriteString(paragraphStr)
+	} else if config.IncludeTables && content.Type == "table" {
+		table := content.Value.(docx_parser.Table)
+		tableStr := docx_parser.Table2markdown(table)
+		tableBuilder.WriteString(tableStr)
+		tableBuilder.WriteString("\n")
+	} else if content.Type == "image" {
+		// Image processing is disabled
+	}
+	buffer.WriteString("\n")
 }
 
 func word2Heading(value string, fontSize int, numPr *bool) string {
@@ -108,7 +153,7 @@ func word2Heading(value string, fontSize int, numPr *bool) string {
 }
 
 func getTrimedStr(s string) string {
-	// 使用 TrimFunc 去掉字符串两端的所有空白字符
+	// Use TrimFunc to remove all leading/trailing whitespace from the string
 	trimmed := strings.TrimFunc(s, func(r rune) bool {
 		return unicode.IsSpace(r)
 	})

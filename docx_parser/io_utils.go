@@ -9,24 +9,24 @@ import (
 )
 
 func CreateMdDir(documentPath string, outputDir string, suffix string) (string, string, error) {
-	// 获取文件名称 并换后缀
+	// Get the file name and change the extension
 	docxName := filepath.Base(documentPath)
 	mdName := strings.TrimSuffix(docxName, suffix)
 	mdName = mdName + ".md"
 
 	// ---------------------------------
-	// 检查outputDir是否存在，如果不存在就报错
+	// Check if outputDir exists, if not, return an error
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 		fmt.Printf("path does not exist: %s\n", outputDir)
 		return "", "", err
 	}
 	// --------------------------------
-	// 创建uuid路径
+	// Create a path with uuid
 	//uuidStr := uuid.New().String()
 	//mdDirPath := filepath.Join(outputDir, uuidStr)
 	mdDirPath := outputDir
 	mdPath := filepath.Join(mdDirPath, mdName)
-	// 检查路径是否存在，如果不存在则创建
+	// Check if the path exists, if not, create it
 	err := os.MkdirAll(mdDirPath, 0755)
 	if err != nil {
 		fmt.Printf("Failed to create directory: %v\n", err)
@@ -44,10 +44,10 @@ func SaveFile(filePath string, mdStr string) error {
 	defer func(file *os.File) {
 		err := file.Close()
 		if err != nil {
-			// 啥也不干
+			// Do nothing
 		}
 	}(file)
-	// 写入内容
+	// Write content
 	_, err = file.Write([]byte(mdStr))
 	if err != nil {
 		log.Fatalf("Failed to write to file: %v", err)

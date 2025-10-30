@@ -4,7 +4,7 @@ import (
 	"regexp"
 )
 
-// 检查是否以阿拉伯数字开头
+// Check if the string starts with an Arabic number
 func startsWithArabicNumber(s string) bool {
 	if len(s) == 0 {
 		return false
@@ -12,13 +12,13 @@ func startsWithArabicNumber(s string) bool {
 	return s[0] >= '0' && s[0] <= '9'
 }
 
-// 检查是否以 "第" + 阿拉伯数字开头
+// Check if the string starts with "第" + an Arabic number
 func startsWithDiAndArabicNumber(s string) bool {
 	matched, _ := regexp.MatchString(`^第[0-9]+`, s)
 	return matched
 }
 
-// 检查是否以汉字数字开头
+// Check if the string starts with a Chinese number
 func startsWithChineseNumber(s string) bool {
 	if len(s) == 0 {
 		return false
@@ -27,13 +27,13 @@ func startsWithChineseNumber(s string) bool {
 	return matched
 }
 
-// 检查是否以 "第" + 汉字数字开头
+// Check if the string starts with "第" + a Chinese number
 func startsWithDiAndChineseNumber(s string) bool {
 	matched, _ := regexp.MatchString(`^第[一二三四五六七八九十]`, s)
 	return matched
 }
 
-// 综合检查函数
+// Comprehensive check function
 func CheckString(s string) bool {
 	return startsWithArabicNumber(s) ||
 		startsWithDiAndArabicNumber(s) ||
